@@ -15,10 +15,8 @@ import shutil
 parser = argparse.ArgumentParser()
 parser.add_argument('--ds', type=str, default='deepglobe', help='Dataset name.')
 parser.add_argument('--no_skip', action='store_true', help='Rerun experiments that already finished (by default they are skipped).')
+parser.add_argument('--n_classes', type=int, default=None, help='Override the default number of classes of the dataset.')
 args = parser.parse_args()
-
-# Create main experiment folder.
-EXP_PATH_MAIN = f'exp_{args.ds}' 
 
 # Dataset-specific parameters.
 h_size_dict = {'38-cloud' : 384,
@@ -37,6 +35,16 @@ n_classes_dict = {'38-cloud' : 2,
                   'deepglobe' : 7,
                   'FUSAR-Map' : 5,
                   'riverscope' : 2}
+
+# Number of classes: dataset default, unless overridden by --n_classes.
+# A non-default number of classes saves the results in a separate folder (e.g., exp_riverscope_3classes),
+# so they do not overwrite (or get skipped because of) the experiments with the default number of classes.
+n_classes = args.n_classes if args.n_classes is not None else n_classes_dict[args.ds]
+exp_tag = f'_{n_classes}classes' if n_classes != n_classes_dict[args.ds] else ''
+exp_tag_str = f'--exp_tag {exp_tag} ' if exp_tag else ''
+
+# Main experiment folder (must match EXP_PATH_MAIN in train-test.py).
+EXP_PATH_MAIN = f'exp_{args.ds}{exp_tag}'
 
 # Hyperparameters are defined as lists to run several experiments.
 bs_list = [8] # [8, 16, 24]
@@ -89,7 +97,7 @@ for model in model_list_:
                                 continue
 
                             ### for smp_reduction in smp_reduction_list:
-                            cmd_str = f'nohup python train-test.py --dataset_name {args.ds} --n_classes {n_classes_dict[args.ds]} ' + \
+                            cmd_str = f'nohup python train-test.py --dataset_name {args.ds} --n_classes {n_classes} {exp_tag_str}' + \
                                       f'--in_channels {in_channels_dict[args.ds]} --h_size {h_size_dict[args.ds]} --w_size {w_size_dict[args.ds]} ' + \
                                       f'--model {model} --backbone {backbone} --loss {loss} --da_train {da_train} --max_epochs {max_epochs} ' + \
                                       f'--batch_size {bs} --lr {lr} --scheduler {scheduler} {save_images_str} --segmap_mode {segmap_mode} ' + \

@@ -95,6 +95,7 @@ parser.add_argument('--debug', help="Is running in debug mode?", required=False,
 parser.add_argument('--use_fn', help="Use SMP preprocessing_fn?", required=False, default=False,  action=argparse.BooleanOptionalAction)
 parser.add_argument('--ec', help='Experiment counter for sequential runs - ec = 0 starts a new CSV, ec > 0 appends results to the existing file.', type=int, default=0)
 parser.add_argument('--num_workers', help="Number of DataLoader workers.", type=int, required=False, default=0)
+parser.add_argument('--exp_tag', help="Suffix for the main experiment folder (e.g., '_3classes' -> exp_riverscope_3classes).", type=str, required=False, default='')
 parser.add_argument('--resume', help="Resume training from last_checkpoint.pt if it exists in the experiment folder.", required=False, default=False, action='store_true')
 
 # Flag to perform evaluation over the validation set.
@@ -126,9 +127,9 @@ print(f'Number of classes: {args.n_classes}\nInput channels: {args.in_channels}'
 # %%
 # This section sets the directory path for experiments based on the dataset name and other parameters.
 if args.debug:
-    EXP_PATH_MAIN = f'exp_debug_{args.dataset_name}'
+    EXP_PATH_MAIN = f'exp_debug_{args.dataset_name}{args.exp_tag}'
 else:
-    EXP_PATH_MAIN = f'exp_{args.dataset_name}'
+    EXP_PATH_MAIN = f'exp_{args.dataset_name}{args.exp_tag}'
 
 # Set the directory path for the current experiment.
 EXP_PATH = os.path.join(
@@ -2301,12 +2302,13 @@ def evaluate_model(model, dataloader, mode='val', reduction='macro'):
     Returns:
         path_list (list): List of image paths used in the evaluation.
         smp_metrics (dict): Dictionary of aggregated SMP metrics (IoU, F1, Accuracy, Precision, Recall).
+        stats (tuple): Per-image TP, FP, FN, TN tensors, shape (N, 1) if binary or (N, C) if multiclass.
 
     Notes:
         - Uses segmentation_models_pytorch (SMP) metrics.
         - Supports both binary and multiclass segmentation.
     """
-    print(f'\nEvaluating model in "{mode}" mode with "{reduction}" reduction...')    
+    print(f'\nEvaluating model in "{mode}" mode with "{reduction}" reduction...')
 
     # Path list
     path_list = []
@@ -2382,7 +2384,49 @@ def evaluate_model(model, dataloader, mode='val', reduction='macro'):
 
     print(f'Model evaluated in "{mode}" mode!')
 
-    return path_list, smp_metrics 
+    return path_list, smp_metrics, (tp_sum, fp_sum, fn_sum, tn_sum)
+
+# %%
+def save_per_class_metrics_csv(stats, output_csv, class_names=None):
+    """
+    Saves the metrics of each class separately (multiclass segmentation only).
+
+    For each class, the class is evaluated as a binary problem (class vs. rest), so the values are
+    directly comparable with a binary model trained only for that class.
+
+    Args:
+        stats (tuple): Per-image TP, FP, FN, TN tensors with shape (N, C), as returned by `evaluate_model`.
+        output_csv (str): Path to the output CSV file.
+        class_names (list[str], optional): Name of each class. Defaults to the class index.
+
+    Columns:
+        - iou, f1, precision, recall: global metrics (pixels of all images together, 'micro').
+        - iou-iw, f1-iw: mean of the per-image metrics ('micro-imagewise').
+    """
+    tp, fp, fn, tn = stats
+    n_classes = tp.shape[1]
+    if class_names is None:
+        class_names = [str(c) for c in range(n_classes)]
+
+    metric_fns = {
+        'iou': smp.metrics.functional.iou_score,
+        'f1': smp.metrics.functional.f1_score,
+        'precision': smp.metrics.functional.precision,
+        'recall': smp.metrics.functional.recall,
+    }
+
+    with open(output_csv, mode='w', newline='') as csvfile:
+        writer = csv.writer(csvfile, delimiter=';')
+        writer.writerow(['Class', 'Name'] + list(metric_fns.keys()) + ['iou-iw', 'f1-iw'])
+
+        for c in range(n_classes):
+            # Keep only class `c`: shape (N, 1), the same as a binary evaluation
+            s = [x[:, c:c+1] for x in (tp, fp, fn, tn)]
+            row = [c, class_names[c]]
+            row += [fn_metric(*s, reduction='micro').item() for fn_metric in metric_fns.values()]
+            row += [smp.metrics.functional.iou_score(*s, reduction='micro-imagewise').item(),
+                    smp.metrics.functional.f1_score(*s, reduction='micro-imagewise').item()]
+            writer.writerow(row)
 
 # %%
 def save_smp_metrics_per_image_csv(file_paths, metrics_dict, stats_dict, output_csv):
@@ -2543,15 +2587,20 @@ def run_model_evaluation(data_loader, mode='test', reduction='macro', gen_rep=Tr
 
     # 2 — Global evaluation over the dataset (aggregated metrics)
     # If binary segmentation: 'macro' = 'micro'
-    path_list, smp_metrics = \
+    path_list, smp_metrics, stats = \
         evaluate_model(model, data_loader, mode=mode, reduction=reduction)
 
     save_smp_metrics_csv(smp_metrics, os.path.join(EXP_PATH, f'report_smp_({mode})_({reduction}).csv'), reduction)
 
+    # Multiclass: also save the metrics of each class (e.g., the river class alone in RiverScope)
+    if args.n_classes > 1:
+        class_names = ['land', 'river', 'other_water'] if args.dataset_name == 'riverscope' else None
+        save_per_class_metrics_csv(stats, os.path.join(EXP_PATH, f'report_smp_({mode})_per_class.csv'), class_names)
+
     # 3 — Global evaluation with imagewise reduction strategy
     # If binary segmentation: 'macro-imagewise' = 'micro-imagewise'
     reduction_ = reduction + '-imagewise'
-    path_list, smp_metrics_iw = \
+    path_list, smp_metrics_iw, _ = \
         evaluate_model(model, data_loader, mode=mode, reduction=reduction_)
 
     save_smp_metrics_csv(smp_metrics_iw, os.path.join(EXP_PATH, f'report_smp_({mode})_({reduction_}).csv'), reduction_)   
