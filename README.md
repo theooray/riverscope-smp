@@ -170,50 +170,6 @@ Cores do mapa de erros (modo binário):
 Além disso, `exp_riverscope/gen_report_(test)_(micro|macro).csv` reúne uma linha por experimento,
 facilitando a comparação.
 
-## Resultados
-
-Lote binário (rio vs. resto), conjunto de **teste**, Adam com LR 1e-4, batch 8, scheduler
-`plateau`, 1 seed. **IoU** = IoU global do rio; **IoU-img** = média do IoU por imagem.
-
-| Modelo | Encoder | Loss | DA | Melhor época | IoU | F1 | IoU-img |
-|---|---|---|---|---:|---:|---:|---:|
-| Unet | resnet50 | crossentropy | none | 8 | 0.825 | 0.904 | 0.788 |
-| Unet | resnet50 | dice | none | 26 | 0.843 | 0.915 | 0.778 |
-| Unet | resnet50 | crossentropy | moderate | 13 | 0.835 | 0.910 | 0.796 |
-| Unet | resnet50 | dice | moderate | 50 | 0.843 | 0.915 | 0.801 |
-| Unet | efficientnet-b2 | crossentropy | none | 10 | 0.857 | 0.923 | 0.817 |
-| Unet | efficientnet-b2 | dice | none | 30 | 0.834 | 0.909 | 0.815 |
-| Unet | efficientnet-b2 | crossentropy | moderate | 32 | 0.853 | 0.921 | **0.818** |
-| Unet | efficientnet-b2 | dice | moderate | 15 | 0.841 | 0.913 | 0.815 |
-| FPN | resnet50 | crossentropy | none | 21 | 0.842 | 0.914 | 0.809 |
-| FPN | resnet50 | dice | none | 7 | 0.833 | 0.909 | 0.794 |
-| FPN | resnet50 | crossentropy | moderate | 14 | 0.836 | 0.911 | 0.793 |
-| FPN | resnet50 | dice | moderate | 5 | 0.825 | 0.904 | 0.788 |
-| FPN | efficientnet-b2 | crossentropy | none | 6 | 0.848 | 0.918 | 0.792 |
-| FPN | efficientnet-b2 | dice | none | 29 | **0.863** | **0.927** | 0.809 |
-| FPN | efficientnet-b2 | crossentropy | moderate | 15 | 0.835 | 0.910 | 0.804 |
-| FPN | efficientnet-b2 | dice | moderate | 25 | 0.861 | 0.925 | 0.818 |
-
-Observações:
-
-- As diferenças entre configurações são pequenas (IoU entre 0.825 e 0.863), com **uma única seed** e
-  um conjunto de validação pequeno e ruidoso; ainda não é possível afirmar que uma configuração é
-  melhor que outra.
-- Os modelos começam a sofrer **overfitting** poucas épocas após a melhor época; o *early stopping*
-  garante que o modelo avaliado seja o da melhor época de validação.
-- **Cerca de 2/3 dos falsos positivos ocorrem em lagos e outros corpos d'água (rótulo 2)**, que no
-  modo binário contam como "não rio". O modelo detecta água corretamente, mas tem dificuldade em
-  distinguir rio de lago.
-
-## Próximos passos
-
-1. Reportar o IoU por classe e escolher configurações pela **validação**, não pelo teste.
-2. **Multiclasse** (terra, rio, outros corpos d'água) para reduzir a confusão rio × lago.
-3. Binário **água vs. não água** (rótulos 1 + 2) como referência.
-4. **Fusão de dados:** NDWI, bandas do Sentinel-2 (incluindo SWIR) e SWOT `pixc` como canais extras.
-5. Repetição das melhores configurações com **várias seeds** (média ± desvio).
-6. Análise de erros por tipo de região e teste de generalização para regiões não vistas.
-
 ## Créditos
 
 O pipeline é baseado no tutorial *"Getting Started with Semantic Segmentation using PyTorch & SMP"*
