@@ -106,7 +106,7 @@ for model in model_list_:
                                 continue
 
                             ### for smp_reduction in smp_reduction_list:
-                            cmd_str = f'nohup python train-test.py --dataset_name {args.ds} --n_classes {n_classes} {exp_tag_str}{target_str}' + \
+                            cmd_str = f'nohup python -u train-test.py --dataset_name {args.ds} --n_classes {n_classes} {exp_tag_str}{target_str}' + \
                                       f'--in_channels {in_channels_dict[args.ds]} --h_size {h_size_dict[args.ds]} --w_size {w_size_dict[args.ds]} ' + \
                                       f'--model {model} --backbone {backbone} --loss {loss} --da_train {da_train} --max_epochs {max_epochs} ' + \
                                       f'--batch_size {bs} --lr {lr} --scheduler {scheduler} {save_images_str} --segmap_mode {segmap_mode} ' + \
