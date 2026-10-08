@@ -97,9 +97,10 @@ parser.add_argument('--ec', help='Experiment counter for sequential runs - ec = 
 parser.add_argument('--num_workers', help="Number of DataLoader workers.", type=int, required=False, default=0)
 parser.add_argument('--exp_tag', help="Suffix for the main experiment folder (e.g., '_3classes' -> exp_riverscope_3classes).", type=str, required=False, default='')
 parser.add_argument('--resume', help="Resume training from last_checkpoint.pt if it exists in the experiment folder.", required=False, default=False, action='store_true')
+parser.add_argument('--target', help="RiverScope binary target: 'river' (label 1) or 'water' (labels 1 and 2: river + other water bodies).", type=str, required=False, default='river', choices=['river', 'water'])
 
 # Flag to perform evaluation over the validation set.
-eval_val = False
+eval_val = True
 
 # ***** IMPORTANT!!! *****
 # If exporting this notebook as a .py script, comment out the line below!
@@ -535,7 +536,8 @@ class RiverScopeDataset(Dataset):
         image_filenames (list[str]): Image paths relative to `ds_dir`.
         mask_filenames (list[str]): Mask paths relative to `ds_dir`.
         in_channels (int): 3 (RGB) or 4 (RGB + NIR).
-        n_classes (int): 1 (binary: water vs. rest) or 3 (labels 0, 1, 2; the rare label 3 is mapped to 0).
+        n_classes (int): 1 (binary, see `target`) or 3 (labels 0, 1, 2; the rare label 3 is mapped to 0).
+        target (str): Positive class in binary mode: 'river' (label 1) or 'water' (labels 1 and 2).
         transform (callable, optional): Albumentations transform applied to both image and mask.
     """
 
@@ -543,12 +545,13 @@ class RiverScopeDataset(Dataset):
     # three channels match the RGB order expected by ImageNet normalization and visualization.
     BAND_ORDER = [2, 1, 0, 3]
 
-    def __init__(self, ds_dir, image_filenames, mask_filenames, in_channels=4, n_classes=1, transform=None):
+    def __init__(self, ds_dir, image_filenames, mask_filenames, in_channels=4, n_classes=1, target='river', transform=None):
         self.ds_dir = ds_dir
         self.image_filenames = image_filenames
         self.mask_filenames = mask_filenames
         self.in_channels = in_channels
         self.n_classes = n_classes
+        self.target = target
         self.transform = transform
 
         if in_channels not in (3, 4):
@@ -581,8 +584,11 @@ class RiverScopeDataset(Dataset):
         mask_path = os.path.join(self.ds_dir, self.mask_filenames[idx])
         raw_mask = np.array(Image.open(mask_path)).astype(np.uint8)  # PIL reads the LZW float32 mask
 
-        if self.n_classes == 1:
-            # Binary: water (label 1) vs. everything else
+        if self.n_classes == 1 and self.target == 'water':
+            # Binary: all water (river, label 1, and other water bodies, label 2) vs. everything else
+            mask = np.isin(raw_mask, (1, 2)).astype(np.uint8)
+        elif self.n_classes == 1:
+            # Binary: river (label 1) vs. everything else (including other water bodies)
             mask = (raw_mask == 1).astype(np.uint8)
         else:
             # Multiclass: keep 0, 1, 2 and map the rare label 3 to background
@@ -1022,7 +1028,7 @@ if args.in_channels > 3:
     # 38-Cloud and RiverScope (RGB + NIR) are multispectral.
     if args.dataset_name == 'riverscope':
         train_dataset = RiverScopeDataset(DS_PATH, train_images, train_masks,
-                                          in_channels=args.in_channels, n_classes=args.n_classes)
+                                          in_channels=args.in_channels, n_classes=args.n_classes, target=args.target)
         # RiverScope images have different sizes, so they cannot be batched without padding.
         stats_batch_size = 1
     else:
@@ -1155,9 +1161,9 @@ if args.dataset_name == 'FUSAR-Map':
 # %%
 if args.dataset_name == 'riverscope':
     # Create dataset instances with the respective transformations
-    train_dataset = RiverScopeDataset(DS_PATH, train_images, train_masks, args.in_channels, args.n_classes, transform=t_train)
-    val_dataset = RiverScopeDataset(DS_PATH, val_images, val_masks, args.in_channels, args.n_classes, transform=t_val)
-    test_dataset = RiverScopeDataset(DS_PATH, test_images, test_masks, args.in_channels, args.n_classes, transform=t_test)
+    train_dataset = RiverScopeDataset(DS_PATH, train_images, train_masks, args.in_channels, args.n_classes, args.target, transform=t_train)
+    val_dataset = RiverScopeDataset(DS_PATH, val_images, val_masks, args.in_channels, args.n_classes, args.target, transform=t_val)
+    test_dataset = RiverScopeDataset(DS_PATH, test_images, test_masks, args.in_channels, args.n_classes, args.target, transform=t_test)
 
     # Retrieve color coding dictionary (used for mask visualization)
     class_to_rgb = train_dataset.class_to_rgb
@@ -1238,7 +1244,7 @@ def save_sample_visualization(ds, train_path, exp_path, file_list=None, idx=100)
         if file_list is None:
             raise ValueError("For 'riverscope', file_list must be provided.")
         # Use the dataset class (without transforms) to load RGB + mask with the same band order and label mapping
-        sample_ds = RiverScopeDataset(train_path, file_list[0], file_list[1], in_channels=3, n_classes=args.n_classes)
+        sample_ds = RiverScopeDataset(train_path, file_list[0], file_list[1], in_channels=3, n_classes=args.n_classes, target=args.target)
         img_rgb = sample_ds.open_image(idx)
         mask = sample_ds.open_mask(idx)
 

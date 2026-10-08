@@ -16,6 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--ds', type=str, default='deepglobe', help='Dataset name.')
 parser.add_argument('--no_skip', action='store_true', help='Rerun experiments that already finished (by default they are skipped).')
 parser.add_argument('--n_classes', type=int, default=None, help='Override the default number of classes of the dataset.')
+parser.add_argument('--target', type=str, default='river', choices=['river', 'water'], help="RiverScope binary target: 'river' (label 1) or 'water' (labels 1 and 2).")
 args = parser.parse_args()
 
 # Dataset-specific parameters.
@@ -41,6 +42,14 @@ n_classes_dict = {'38-cloud' : 2,
 # so they do not overwrite (or get skipped because of) the experiments with the default number of classes.
 n_classes = args.n_classes if args.n_classes is not None else n_classes_dict[args.ds]
 exp_tag = f'_{n_classes}classes' if n_classes != n_classes_dict[args.ds] else ''
+
+# Binary target 'water' (river + other water bodies) also gets its own folder (e.g., exp_riverscope_water).
+if args.target == 'water':
+    if n_classes != 2:
+        raise ValueError("--target water is only valid for binary segmentation (n_classes = 2).")
+    exp_tag += '_water'
+target_str = f'--target {args.target} ' if args.target != 'river' else ''
+
 exp_tag_str = f'--exp_tag {exp_tag} ' if exp_tag else ''
 
 # Main experiment folder (must match EXP_PATH_MAIN in train-test.py).
@@ -97,7 +106,7 @@ for model in model_list_:
                                 continue
 
                             ### for smp_reduction in smp_reduction_list:
-                            cmd_str = f'nohup python train-test.py --dataset_name {args.ds} --n_classes {n_classes} {exp_tag_str}' + \
+                            cmd_str = f'nohup python train-test.py --dataset_name {args.ds} --n_classes {n_classes} {exp_tag_str}{target_str}' + \
                                       f'--in_channels {in_channels_dict[args.ds]} --h_size {h_size_dict[args.ds]} --w_size {w_size_dict[args.ds]} ' + \
                                       f'--model {model} --backbone {backbone} --loss {loss} --da_train {da_train} --max_epochs {max_epochs} ' + \
                                       f'--batch_size {bs} --lr {lr} --scheduler {scheduler} {save_images_str} --segmap_mode {segmap_mode} ' + \
