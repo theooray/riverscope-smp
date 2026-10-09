@@ -98,6 +98,7 @@ parser.add_argument('--num_workers', help="Number of DataLoader workers.", type=
 parser.add_argument('--exp_tag', help="Suffix for the main experiment folder (e.g., '_3classes' -> exp_riverscope_3classes).", type=str, required=False, default='')
 parser.add_argument('--resume', help="Resume training from last_checkpoint.pt if it exists in the experiment folder.", required=False, default=False, action='store_true')
 parser.add_argument('--target', help="RiverScope binary target: 'river' (label 1) or 'water' (labels 1 and 2: river + other water bodies).", type=str, required=False, default='river', choices=['river', 'water'])
+parser.add_argument('--eval_only', help="Do not train: load the existing best_model.pt and only evaluate it on the validation set. Never overwrites the files of the finished experiment.", required=False, default=False, action='store_true')
 
 # Flag to perform evaluation over the validation set.
 eval_val = True
@@ -127,10 +128,11 @@ print(f'Number of classes: {args.n_classes}\nInput channels: {args.in_channels}'
 
 # %%
 # This section sets the directory path for experiments based on the dataset name and other parameters.
+# All experiments are stored inside the 'exp' folder (e.g., exp/exp_riverscope).
 if args.debug:
-    EXP_PATH_MAIN = f'exp_debug_{args.dataset_name}{args.exp_tag}'
+    EXP_PATH_MAIN = os.path.join('exp', f'exp_debug_{args.dataset_name}{args.exp_tag}')
 else:
-    EXP_PATH_MAIN = f'exp_{args.dataset_name}{args.exp_tag}'
+    EXP_PATH_MAIN = os.path.join('exp', f'exp_{args.dataset_name}{args.exp_tag}')
 
 # Set the directory path for the current experiment.
 EXP_PATH = os.path.join(
@@ -191,11 +193,12 @@ print(versions_str)
 print('\n\nArguments:\n----------------------------')
 print(args_str)
 
-with open(os.path.join(EXP_PATH, f'general_report.txt'), 'w') as model_file:
-    model_file.write('\n\nPackage versions:\n----------------------------\n')
-    model_file.write(get_versions())
-    model_file.write('\n\nArguments:\n----------------------------\n')
-    model_file.write(args_str)  
+if not args.eval_only:
+    with open(os.path.join(EXP_PATH, f'general_report.txt'), 'w') as model_file:
+        model_file.write('\n\nPackage versions:\n----------------------------\n')
+        model_file.write(get_versions())
+        model_file.write('\n\nArguments:\n----------------------------\n')
+        model_file.write(args_str)
 
 # %% [markdown]
 # ## 🔒 Reproducibility Settings
@@ -679,8 +682,9 @@ model.to(device)
 print(preprocessing_fn)
 
 # Save the model architecture summary to a text file.
-with open(os.path.join(EXP_PATH, 'model.txt'), 'w') as model_file:
-    model_file.write(str(model))
+if not args.eval_only:
+    with open(os.path.join(EXP_PATH, 'model.txt'), 'w') as model_file:
+        model_file.write(str(model))
 
 # %% [markdown]
 # ## 📦 Dataset Preparation and Preprocessing
@@ -1285,7 +1289,8 @@ elif args.dataset_name == 'riverscope':
 else:
     file_list = None
 
-save_sample_visualization(args.dataset_name, train_path=DS_PATH, exp_path=EXP_PATH, file_list=file_list, idx=100)
+if not args.eval_only:
+    save_sample_visualization(args.dataset_name, train_path=DS_PATH, exp_path=EXP_PATH, file_list=file_list, idx=100)
 
 # %% [markdown]
 # ## 📦 Data Loaders
@@ -1403,13 +1408,14 @@ else:
 # ### 📋 Update the General Report
 
 # %%
-with open(os.path.join(EXP_PATH,  'general_report.txt'), 'a') as file:
-    file.write(f"\n\nCriterion:\n")
-    file.write(str(criterion))
-    file.write(f"\n\nOptimizer:\n")
-    file.write(str(optimizer))
-    file.write(f"\n\nScheduler:\n")
-    file.write(str(scheduler))
+if not args.eval_only:
+    with open(os.path.join(EXP_PATH,  'general_report.txt'), 'a') as file:
+        file.write(f"\n\nCriterion:\n")
+        file.write(str(criterion))
+        file.write(f"\n\nOptimizer:\n")
+        file.write(str(optimizer))
+        file.write(f"\n\nScheduler:\n")
+        file.write(str(scheduler))
 
 # %% [markdown]
 # ### 🏋️ Model Training/Validation Loop
@@ -1797,13 +1803,14 @@ def fit(epochs, model, train_loader, val_loader, criterion, optimizer, scheduler
     return history
 
 # %%
-# Train the model and retrieve the training history
-history = fit(args.max_epochs, model, train_loader, val_loader, criterion, optimizer, scheduler)
+# Train the model and retrieve the training history (skipped with --eval_only)
+history = None if args.eval_only else fit(args.max_epochs, model, train_loader, val_loader, criterion, optimizer, scheduler)
 
 # Update the general experiment report
-with open(os.path.join(EXP_PATH, 'general_report.txt'), 'a') as model_file:
-    model_file.write(f"\n\nBest epoch: {history['best_epoch']}")
-    model_file.write(f"\nTotal time: {history['total_time']} minutes.")
+if not args.eval_only:
+    with open(os.path.join(EXP_PATH, 'general_report.txt'), 'a') as model_file:
+        model_file.write(f"\n\nBest epoch: {history['best_epoch']}")
+        model_file.write(f"\nTotal time: {history['total_time']} minutes.")
 
 # Optional — Save the full training history for further analysis
 # with open(os.path.join(EXP_PATH, 'train_history.pkl'), 'wb') as fp:
@@ -1813,48 +1820,49 @@ with open(os.path.join(EXP_PATH, 'general_report.txt'), 'a') as model_file:
 # ### 📝 Generate Training Report
 
 # %%
-# Define the report filename and open the file for writing
-report_filename = os.path.join(EXP_PATH, 'training_report' + '.csv')
-report_file = open(report_filename, 'w')
+if not args.eval_only:
+    # Define the report filename and open the file for writing
+    report_filename = os.path.join(EXP_PATH, 'training_report' + '.csv')
+    report_file = open(report_filename, 'w')
 
-# Write CSV header
-header = 'Epoch;Train Loss;Val. Loss;Train IoU;Val. IoU;Train F1;Val. F1;Train Acc.;Val. Acc.;LR \n'
-report_file.write(header)
+    # Write CSV header
+    header = 'Epoch;Train Loss;Val. Loss;Train IoU;Val. IoU;Train F1;Val. F1;Train Acc.;Val. Acc.;LR \n'
+    report_file.write(header)
 
-for i, (train_loss_, 
-        val_loss_, 
-        train_iou_, 
-        val_iou_, 
-        train_f1_, 
-        val_f1_, 
-        train_acc_, 
-        val_acc_, 
-        lrs_) in enumerate(
-            zip(history['train_loss'], 
-                history['val_loss'], 
-                history['train_iou_smp'], 
-                history['val_iou_smp'], 
-                history['train_f1_smp'], 
-                history['val_f1_smp'], 
-                history['train_acc_smp'], 
-                history['val_acc_smp'], 
-                history['lrs'],)
-):
-    text = f'{i};{train_loss_};{val_loss_};{train_iou_};{val_iou_};{train_f1_};{val_f1_};{train_acc_};{val_acc_};{lrs_}'   
-    if i == history['best_epoch']:
-        text += '; ← Best epoch!\n'
-    else:
-        text += '\n'
+    for i, (train_loss_,
+            val_loss_,
+            train_iou_,
+            val_iou_,
+            train_f1_,
+            val_f1_,
+            train_acc_,
+            val_acc_,
+            lrs_) in enumerate(
+                zip(history['train_loss'],
+                    history['val_loss'],
+                    history['train_iou_smp'],
+                    history['val_iou_smp'],
+                    history['train_f1_smp'],
+                    history['val_f1_smp'],
+                    history['train_acc_smp'],
+                    history['val_acc_smp'],
+                    history['lrs'],)
+    ):
+        text = f'{i};{train_loss_};{val_loss_};{train_iou_};{val_iou_};{train_f1_};{val_f1_};{train_acc_};{val_acc_};{lrs_}'
+        if i == history['best_epoch']:
+            text += '; ← Best epoch!\n'
+        else:
+            text += '\n'
 
-    report_file.write(text)
+        report_file.write(text)
 
-# Write footer with best epoch and total training time
-footer = '\nBest epoch:;' + str(history['best_epoch'])
-footer += '\nTotal time:;' + str((history['total_time'] * 60)) + 'm \n\n'
-report_file.write(footer)
+    # Write footer with best epoch and total training time
+    footer = '\nBest epoch:;' + str(history['best_epoch'])
+    footer += '\nTotal time:;' + str((history['total_time'] * 60)) + 'm \n\n'
+    report_file.write(footer)
 
-# Close the report file
-report_file.close()
+    # Close the report file
+    report_file.close()
 
 # %% [markdown]
 # ### 🏆 Loading the Best Model
@@ -1865,8 +1873,9 @@ checkpoint = torch.load(os.path.join(EXP_PATH, 'best_model.pt'), map_location=de
 model.load_state_dict(checkpoint['model_state_dict'])
 model.to(device)
 
-# Recover best epoch directly from the training history (preferred if available)
-best_epoch = history['best_epoch']
+# Recover best epoch directly from the training history (preferred if available).
+# With --eval_only there is no history, so it comes from the checkpoint (same 0-based epoch index).
+best_epoch = checkpoint['epoch'] if args.eval_only else history['best_epoch']
 
 # %% [markdown]
 # ### 💾 Saving and Loading Models with SMP
@@ -1875,7 +1884,8 @@ best_epoch = history['best_epoch']
 
 # %%
 # After training your model, save it to a directory
-model.save_pretrained(os.path.join(EXP_PATH, 'best_model_SMP'))
+if not args.eval_only:
+    model.save_pretrained(os.path.join(EXP_PATH, 'best_model_SMP'))
 
 # Load the model from the local directory
 # --------------------------------------------
@@ -1954,23 +1964,24 @@ def plot_lr(history):
 # ## 📈 Visualization of Training History
 
 # %%
-# Plot and save training/validation loss history
-plot_loss(history)
-plt.savefig(os.path.join(EXP_PATH, 'loss_history.png')) 
-plt.savefig(os.path.join(EXP_PATH, 'loss_history.pdf')) 
-### plt.close()
+if not args.eval_only:
+    # Plot and save training/validation loss history
+    plot_loss(history)
+    plt.savefig(os.path.join(EXP_PATH, 'loss_history.png'))
+    plt.savefig(os.path.join(EXP_PATH, 'loss_history.pdf'))
+    ### plt.close()
 
-# Plot and save segmentation metrics (IoU, F1-Score, Accuracy) history
-plot_score_smp(history)
-plt.savefig(os.path.join(EXP_PATH, 'smp_history.png')) 
-plt.savefig(os.path.join(EXP_PATH, 'smp_history.pdf')) 
-### plt.close()
+    # Plot and save segmentation metrics (IoU, F1-Score, Accuracy) history
+    plot_score_smp(history)
+    plt.savefig(os.path.join(EXP_PATH, 'smp_history.png'))
+    plt.savefig(os.path.join(EXP_PATH, 'smp_history.pdf'))
+    ### plt.close()
 
-# Plot and save learning rate schedule
-plot_lr(history)
-plt.savefig(os.path.join(EXP_PATH, 'lr_history.png')) 
-plt.savefig(os.path.join(EXP_PATH, 'lr_history.pdf')) 
-### plt.close()
+    # Plot and save learning rate schedule
+    plot_lr(history)
+    plt.savefig(os.path.join(EXP_PATH, 'lr_history.png'))
+    plt.savefig(os.path.join(EXP_PATH, 'lr_history.pdf'))
+    ### plt.close()
 
 # %% [markdown]
 # ## 📊 Model Evaluation and Metrics Analysis
@@ -2616,7 +2627,7 @@ def run_model_evaluation(data_loader, mode='test', reduction='macro', gen_rep=Tr
         gen_general_rep(smp_metrics, smp_metrics_iw, mode=mode, reduction=reduction)   
 
 # %%
-if eval_val:
+if eval_val or args.eval_only:
     # Create output folders for saving evaluation results
     folders = ['val_images', 'val_true', 'val_pred', 'val_seg_map']
     for folder in folders:
@@ -2628,22 +2639,24 @@ if eval_val:
     run_model_evaluation(val_loader, mode='val', reduction='micro')
 
 # %%
-# Create output folders for saving evaluation results
-folders = ['test_images', 'test_true', 'test_pred', 'test_seg_map']
-for folder in folders:
-    os.makedirs(os.path.join(EXP_PATH, folder), exist_ok=True)
+# The test set was already evaluated when the experiment finished, so --eval_only skips it.
+if not args.eval_only:
+    # Create output folders for saving evaluation results
+    folders = ['test_images', 'test_true', 'test_pred', 'test_seg_map']
+    for folder in folders:
+        os.makedirs(os.path.join(EXP_PATH, folder), exist_ok=True)
 
-# Run evaluation in 'macro' and 'macro-imagewise' reduction mode.
-run_model_evaluation(test_loader, mode='test', reduction='macro')
-# Run evaluation in 'micro' ans 'micro-imagewise' reduction mode.
-run_model_evaluation(test_loader, mode='test', reduction='micro')
+    # Run evaluation in 'macro' and 'macro-imagewise' reduction mode.
+    run_model_evaluation(test_loader, mode='test', reduction='macro')
+    # Run evaluation in 'micro' ans 'micro-imagewise' reduction mode.
+    run_model_evaluation(test_loader, mode='test', reduction='micro')
 
 # %% [markdown]
 # ## ✅ Finish!
 
 # %%
 # The experiment is complete, so the resume checkpoint is no longer needed (best_model.pt is kept).
-if os.path.exists(LAST_CKPT_PATH):
+if not args.eval_only and os.path.exists(LAST_CKPT_PATH):
     os.remove(LAST_CKPT_PATH)
 
 print('\nFinish!')

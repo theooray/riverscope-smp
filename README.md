@@ -78,8 +78,8 @@ Pastas criadas localmente (fora do Git):
 
 ```
 Datasets/RiverScope/RiverScope_dataset/   # dataset
-exp_riverscope/                           # resultados (uma subpasta por experimento)
-log_batch.txt                             # log da execução em lote
+exp/exp_riverscope/                       # resultados (uma subpasta por experimento)
+logs/log_batch.txt                        # log da execução em lote
 ```
 
 ## Instalação
@@ -129,13 +129,13 @@ Principais argumentos:
 Edite as listas no início do `run-batch.py` (modelos, encoders, losses, augmentations, etc.) e rode:
 
 ```bash
-nohup python -u run-batch.py --ds riverscope >> log_batch.txt 2>&1 &
+mkdir -p logs && nohup python -u run-batch.py --ds riverscope >> logs/log_batch.txt 2>&1 &
 ```
 
 Acompanhe com:
 
 ```bash
-tail -f log_batch.txt
+tail -f logs/log_batch.txt
 ```
 
 - Experimentos já concluídos são **pulados** automaticamente (use `--no_skip` para refazê-los).
@@ -146,7 +146,7 @@ tail -f log_batch.txt
 ## Saídas de cada experimento
 
 Cada experimento gera uma pasta
-`exp_riverscope/exp_<modelo>_<encoder>_<loss>_<batch>_<lr>_<épocas>_<scheduler>_<da>/` com:
+`exp/exp_riverscope/exp_<modelo>_<encoder>_<loss>_<batch>_<lr>_<épocas>_<scheduler>_<da>/` com:
 
 | Arquivo | Conteúdo |
 |---|---|
@@ -167,7 +167,7 @@ Cores do mapa de erros (modo binário):
 | 🟥 Vermelho | não rio | rio | **Falso positivo** |
 | 🟧 Laranja | rio | não rio | **Falso negativo** |
 
-Além disso, `exp_riverscope/gen_report_(test)_(micro|macro).csv` reúne uma linha por experimento,
+Além disso, `exp/exp_riverscope/gen_report_(test)_(micro|macro).csv` reúne uma linha por experimento,
 facilitando a comparação.
 
 ## Créditos

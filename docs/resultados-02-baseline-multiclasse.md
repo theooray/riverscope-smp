@@ -15,7 +15,7 @@
 | Fixos | Adam, LR 1e-4, weight decay 4e-4, batch 8, scheduler `plateau`, até 400 épocas, *early stopping* com paciência 21, seed 42 |
 | Entrada | 512×512 (tiles de até 500×500 com *padding*), 4 canais |
 | Saída | 3 canais (um por classe), predição por `argmax` |
-| Comando | `nohup python -u run-batch.py --ds riverscope --n_classes 3` → `exp_riverscope_3classes/` |
+| Comando | `nohup python -u run-batch.py --ds riverscope --n_classes 3` → `exp/exp_riverscope_3classes/` |
 
 ### Distribuição das classes
 

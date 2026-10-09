@@ -9,6 +9,9 @@ import shutil
 # Enables to run several experiments in batch mode.
 # Each experiment runs the script train-test.py with a specific set of parameters.
 # The user can define lists of hyperparameters, architectures, and encoders.
+#
+# Experiments are saved in exp/ and logs go to logs/. Example:
+#   mkdir -p logs && nohup python -u run-batch.py --ds riverscope >> logs/log_batch.txt 2>&1 &
 # ---------------------------------------------------------------------
 
 # Argument parser.
@@ -17,6 +20,7 @@ parser.add_argument('--ds', type=str, default='deepglobe', help='Dataset name.')
 parser.add_argument('--no_skip', action='store_true', help='Rerun experiments that already finished (by default they are skipped).')
 parser.add_argument('--n_classes', type=int, default=None, help='Override the default number of classes of the dataset.')
 parser.add_argument('--target', type=str, default='river', choices=['river', 'water'], help="RiverScope binary target: 'river' (label 1) or 'water' (labels 1 and 2).")
+parser.add_argument('--eval_only', action='store_true', help='Do not train: evaluate the existing best_model.pt of each finished experiment on the validation set.')
 args = parser.parse_args()
 
 # Dataset-specific parameters.
@@ -53,7 +57,7 @@ target_str = f'--target {args.target} ' if args.target != 'river' else ''
 exp_tag_str = f'--exp_tag {exp_tag} ' if exp_tag else ''
 
 # Main experiment folder (must match EXP_PATH_MAIN in train-test.py).
-EXP_PATH_MAIN = f'exp_{args.ds}{exp_tag}'
+EXP_PATH_MAIN = os.path.join('exp', f'exp_{args.ds}{exp_tag}')
 
 # Hyperparameters are defined as lists to run several experiments.
 bs_list = [8] # [8, 16, 24]
@@ -100,7 +104,20 @@ for model in model_list_:
                             # by train-test.py at the end of the test evaluation is used as the "finished" marker.
                             exp_path = os.path.join(EXP_PATH_MAIN, f'exp_{model}_{backbone}_{loss}_{bs}_{lr}_{max_epochs}_{scheduler}_{da_train}')
                             done_file = os.path.join(exp_path, 'report_smp_(test)_(micro-imagewise).csv')
-                            if not args.no_skip and os.path.exists(done_file):
+
+                            if args.eval_only:
+                                # Validation-only evaluation: needs a finished experiment, and is skipped if the
+                                # validation reports already exist (the last one written is the "done" marker).
+                                val_done_file = os.path.join(exp_path, 'report_smp_(val)_(micro-imagewise).csv')
+                                if not os.path.exists(done_file):
+                                    print(f'Skipping experiment {ec} (not finished, nothing to evaluate): {exp_path}')
+                                    ec = ec + 1
+                                    continue
+                                if not args.no_skip and os.path.exists(val_done_file):
+                                    print(f'Skipping experiment {ec} (validation already evaluated): {exp_path}')
+                                    ec = ec + 1
+                                    continue
+                            elif not args.no_skip and os.path.exists(done_file):
                                 print(f'Skipping experiment {ec} (already finished): {exp_path}')
                                 ec = ec + 1
                                 continue
@@ -110,7 +127,8 @@ for model in model_list_:
                                       f'--in_channels {in_channels_dict[args.ds]} --h_size {h_size_dict[args.ds]} --w_size {w_size_dict[args.ds]} ' + \
                                       f'--model {model} --backbone {backbone} --loss {loss} --da_train {da_train} --max_epochs {max_epochs} ' + \
                                       f'--batch_size {bs} --lr {lr} --scheduler {scheduler} {save_images_str} --segmap_mode {segmap_mode} ' + \
-                                      f' --ec {ec} --resume' # --resume continues from last_checkpoint.pt if the experiment was interrupted.
+                                      f' --ec {ec}' + \
+                                      (' --eval_only' if args.eval_only else ' --resume') # --resume continues from last_checkpoint.pt if the experiment was interrupted.
 
                             ec = ec + 1
 

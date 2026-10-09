@@ -15,7 +15,7 @@
 | Fixos | Adam, LR 1e-4, weight decay 4e-4, batch 8, scheduler `plateau`, até 400 épocas, *early stopping* com paciência 21, seed 42 |
 | Entrada | 512×512 (tiles de até 500×500 com *padding*), 4 canais |
 | Avaliação | Teste **e validação** (`eval_val = True`), com as mesmas métricas |
-| Comando | `nohup python -u run-batch.py --ds riverscope --target water` → `exp_riverscope_water/` |
+| Comando | `nohup python -u run-batch.py --ds riverscope --target water` → `exp/exp_riverscope_water/` |
 
 ### Distribuição das classes
 

@@ -1,5 +1,6 @@
 __pycache__
 .vscode
 Datasets
-exp_*/
-log_*.txt
+exp/
+logs/
+docs/00-caderno-do-artigo.md
