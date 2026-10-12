@@ -21,6 +21,13 @@ parser.add_argument('--no_skip', action='store_true', help='Rerun experiments th
 parser.add_argument('--n_classes', type=int, default=None, help='Override the default number of classes of the dataset.')
 parser.add_argument('--target', type=str, default='river', choices=['river', 'water'], help="RiverScope binary target: 'river' (label 1) or 'water' (labels 1 and 2).")
 parser.add_argument('--eval_only', action='store_true', help='Do not train: evaluate the existing best_model.pt of each finished experiment on the validation set.')
+# Seeds and grid filters. Seed 42 (default) keeps the original folders; any other seed gets its own
+# main folder with a '_s<seed>' suffix (e.g., exp/exp_riverscope_s20), so nothing is overwritten or skipped.
+parser.add_argument('--seeds', type=int, nargs='+', default=[42], help='Seeds to run (e.g., --seeds 20 83).')
+parser.add_argument('--model', type=str, nargs='+', default=None, help='Only these models (default: the model list below).')
+parser.add_argument('--backbone', type=str, nargs='+', default=None, help='Only these encoders (default: the encoder list below).')
+parser.add_argument('--loss', type=str, nargs='+', default=None, help='Only these losses (default: the loss list below).')
+parser.add_argument('--da', type=str, nargs='+', default=None, help='Only these DA strategies (default: the DA list below).')
 args = parser.parse_args()
 
 # Dataset-specific parameters.
@@ -54,11 +61,6 @@ if args.target == 'water':
     exp_tag += '_water'
 target_str = f'--target {args.target} ' if args.target != 'river' else ''
 
-exp_tag_str = f'--exp_tag {exp_tag} ' if exp_tag else ''
-
-# Main experiment folder (must match EXP_PATH_MAIN in train-test.py).
-EXP_PATH_MAIN = os.path.join('exp', f'exp_{args.ds}{exp_tag}')
-
 # Hyperparameters are defined as lists to run several experiments.
 bs_list = [8] # [8, 16, 24]
 lr_list = [0.0001] # [0.001, 0.0001, 0.00001]
@@ -84,56 +86,74 @@ max_epochs = 400 # 200, 400 # 1000
 save_images_str = '--save_images' # --no-save_images
 segmap_mode = 'darker' # ['simple', 'gray', 'darker']
 
+# Optional filters from the command line (e.g., --loss dice --da none) reduce the grid.
+if args.model is not None:
+    model_list_ = args.model
+if args.backbone is not None:
+    backbone_list_ = args.backbone
+if args.loss is not None:
+    loss_list = args.loss
+if args.da is not None:
+    da_train_list = args.da
+
 # Inicia contagem de tempo deste época
 time_start = time.time()
 
-# Experiment counter.
-ec = 0 
+for seed in args.seeds:
+    # Each seed other than 42 has its own main folder (and its own general reports), e.g. exp_riverscope_s20.
+    seed_tag = exp_tag + (f'_s{seed}' if seed != 42 else '')
+    exp_tag_str = f'--exp_tag {seed_tag} ' if seed_tag else ''
 
-# Create the command string and run it.
-for model in model_list_:
-    for backbone in backbone_list_:
-        for bs in bs_list:
-            for lr in lr_list:
-                for scheduler in scheduler_list:
-                    for da_train in da_train_list:
-                        for loss in loss_list:
+    # Main experiment folder (must match EXP_PATH_MAIN in train-test.py).
+    EXP_PATH_MAIN = os.path.join('exp', f'exp_{args.ds}{seed_tag}')
 
-                            # Skip experiments that already finished (e.g., when resuming after a crash/reboot).
-                            # The folder name must match EXP_PATH in train-test.py, and the last report written
-                            # by train-test.py at the end of the test evaluation is used as the "finished" marker.
-                            exp_path = os.path.join(EXP_PATH_MAIN, f'exp_{model}_{backbone}_{loss}_{bs}_{lr}_{max_epochs}_{scheduler}_{da_train}')
-                            done_file = os.path.join(exp_path, 'report_smp_(test)_(micro-imagewise).csv')
+    # Experiment counter (ec = 0 starts a new general report in this main folder).
+    ec = 0
 
-                            if args.eval_only:
-                                # Validation-only evaluation: needs a finished experiment, and is skipped if the
-                                # validation reports already exist (the last one written is the "done" marker).
-                                val_done_file = os.path.join(exp_path, 'report_smp_(val)_(micro-imagewise).csv')
-                                if not os.path.exists(done_file):
-                                    print(f'Skipping experiment {ec} (not finished, nothing to evaluate): {exp_path}')
+    # Create the command string and run it.
+    for model in model_list_:
+        for backbone in backbone_list_:
+            for bs in bs_list:
+                for lr in lr_list:
+                    for scheduler in scheduler_list:
+                        for da_train in da_train_list:
+                            for loss in loss_list:
+
+                                # Skip experiments that already finished (e.g., when resuming after a crash/reboot).
+                                # The folder name must match EXP_PATH in train-test.py, and the last report written
+                                # by train-test.py at the end of the test evaluation is used as the "finished" marker.
+                                exp_path = os.path.join(EXP_PATH_MAIN, f'exp_{model}_{backbone}_{loss}_{bs}_{lr}_{max_epochs}_{scheduler}_{da_train}')
+                                done_file = os.path.join(exp_path, 'report_smp_(test)_(micro-imagewise).csv')
+
+                                if args.eval_only:
+                                    # Validation-only evaluation: needs a finished experiment, and is skipped if the
+                                    # validation reports already exist (the last one written is the "done" marker).
+                                    val_done_file = os.path.join(exp_path, 'report_smp_(val)_(micro-imagewise).csv')
+                                    if not os.path.exists(done_file):
+                                        print(f'Skipping experiment {ec} (not finished, nothing to evaluate): {exp_path}')
+                                        ec = ec + 1
+                                        continue
+                                    if not args.no_skip and os.path.exists(val_done_file):
+                                        print(f'Skipping experiment {ec} (validation already evaluated): {exp_path}')
+                                        ec = ec + 1
+                                        continue
+                                elif not args.no_skip and os.path.exists(done_file):
+                                    print(f'Skipping experiment {ec} (already finished): {exp_path}')
                                     ec = ec + 1
                                     continue
-                                if not args.no_skip and os.path.exists(val_done_file):
-                                    print(f'Skipping experiment {ec} (validation already evaluated): {exp_path}')
-                                    ec = ec + 1
-                                    continue
-                            elif not args.no_skip and os.path.exists(done_file):
-                                print(f'Skipping experiment {ec} (already finished): {exp_path}')
+
+                                ### for smp_reduction in smp_reduction_list:
+                                cmd_str = f'nohup python -u train-test.py --dataset_name {args.ds} --n_classes {n_classes} {exp_tag_str}{target_str}' + \
+                                          f'--in_channels {in_channels_dict[args.ds]} --h_size {h_size_dict[args.ds]} --w_size {w_size_dict[args.ds]} ' + \
+                                          f'--model {model} --backbone {backbone} --loss {loss} --da_train {da_train} --max_epochs {max_epochs} ' + \
+                                          f'--batch_size {bs} --lr {lr} --scheduler {scheduler} {save_images_str} --segmap_mode {segmap_mode} ' + \
+                                          f'--seed {seed} --ec {ec}' + \
+                                          (' --eval_only' if args.eval_only else ' --resume') # --resume continues from last_checkpoint.pt if the experiment was interrupted.
+
                                 ec = ec + 1
-                                continue
 
-                            ### for smp_reduction in smp_reduction_list:
-                            cmd_str = f'nohup python -u train-test.py --dataset_name {args.ds} --n_classes {n_classes} {exp_tag_str}{target_str}' + \
-                                      f'--in_channels {in_channels_dict[args.ds]} --h_size {h_size_dict[args.ds]} --w_size {w_size_dict[args.ds]} ' + \
-                                      f'--model {model} --backbone {backbone} --loss {loss} --da_train {da_train} --max_epochs {max_epochs} ' + \
-                                      f'--batch_size {bs} --lr {lr} --scheduler {scheduler} {save_images_str} --segmap_mode {segmap_mode} ' + \
-                                      f' --ec {ec}' + \
-                                      (' --eval_only' if args.eval_only else ' --resume') # --resume continues from last_checkpoint.pt if the experiment was interrupted.
-
-                            ec = ec + 1
-
-                            print(cmd_str)
-                            os.system(cmd_str)
+                                print(cmd_str)
+                                os.system(cmd_str)
 
 # Count total time of the experiment.
 time_exp = time.time() - time_start

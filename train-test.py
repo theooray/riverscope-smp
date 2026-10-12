@@ -1103,14 +1103,14 @@ if args.in_channels > 3:
 
 # %%
 if args.use_fn:
-    t_train = get_da(args.da_train, args.in_channels, preprocessing_fn)
-    t_val = get_da('val', args.in_channels, preprocessing_fn)
-    t_test = get_da('test', args.in_channels, preprocessing_fn)
+    t_train = get_da(args.da_train, args.in_channels, preprocessing_fn, seed=args.seed)
+    t_val = get_da('val', args.in_channels, preprocessing_fn, seed=args.seed)
+    t_test = get_da('test', args.in_channels, preprocessing_fn, seed=args.seed)
 
 else:
-    t_train = get_da(args.da_train, args.in_channels, mean=MEAN, std=STD)
-    t_val = get_da('val', args.in_channels, mean=MEAN, std=STD)
-    t_test = get_da('test', args.in_channels, mean=MEAN, std=STD)
+    t_train = get_da(args.da_train, args.in_channels, mean=MEAN, std=STD, seed=args.seed)
+    t_val = get_da('val', args.in_channels, mean=MEAN, std=STD, seed=args.seed)
+    t_test = get_da('test', args.in_channels, mean=MEAN, std=STD, seed=args.seed)
 
 # %% [markdown]
 # ### 🗂️ Datasets
@@ -1296,7 +1296,8 @@ if not args.eval_only:
 # ## 📦 Data Loaders
 
 # %%
-g = torch.Generator().manual_seed(42)
+# Shuffling order of the training data follows the experiment seed.
+g = torch.Generator().manual_seed(args.seed)
 
 # DataLoaders
 train_loader = torch.utils.data.DataLoader(
