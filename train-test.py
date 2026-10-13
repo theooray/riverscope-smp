@@ -1301,11 +1301,14 @@ g = torch.Generator().manual_seed(args.seed)
 
 # DataLoaders
 train_loader = torch.utils.data.DataLoader(
-    train_dataset, 
-    batch_size=args.batch_size, 
-    shuffle=True, 
+    train_dataset,
+    batch_size=args.batch_size,
+    shuffle=True,
     num_workers=args.num_workers,
-    generator=g
+    generator=g,
+    # BatchNorm cannot train on a batch with a single image (e.g., the image-pooling branch of DeepLabV3+'s ASPP).
+    # Drop the last batch only in that case, so all other runs keep exactly the same batches as before.
+    drop_last=(len(train_dataset) % args.batch_size == 1)
 )
 val_loader = torch.utils.data.DataLoader(
     val_dataset, 
@@ -2532,16 +2535,17 @@ def gen_general_rep(smp_metrics, smp_metrics_iw, mode='val', reduction='macro'):
         smp_reduction (str): Reduction method used for metrics ('macro' or 'micro').
 
     Notes:
-        - Creates the CSV on first epoch (args.ec == 0) with header.
-        - Appends data for subsequent epochs.
+        - Creates the CSV with header if it does not exist yet.
+        - Otherwise appends one row, so new experiments never erase the rows of previous batches
+          (the experiment counter `ec` restarts at 0 in every run-batch call).
         - Columns include experiment config + metrics + image-wise metrics.
     """
     print('Generating general report...')
     # O nome de um arquivo CSV. Irá armazenar todos os losses e acuracias.
     filename = os.path.join(EXP_PATH_MAIN, f'gen_report_({mode})_({reduction}).csv')
 
-    if args.ec == 0:
-        # Create a new CSV with header on first execution cycle
+    if not os.path.exists(filename):
+        # Create a new CSV with header
         file = open(filename, 'w')
         writer = csv.writer(file, delimiter=';')
 

@@ -3,4 +3,5 @@ __pycache__
 Datasets
 exp/
 logs/
+analysis
 docs/00-caderno-do-artigo.md
