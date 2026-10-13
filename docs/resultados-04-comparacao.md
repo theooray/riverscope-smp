@@ -162,6 +162,36 @@ para o multiclasse, sem pesos por classe) — o que motiva o teste com BCE + Dic
 Melhor época (mediana / máx.): rio 24 / 37 · 3 classes 18 / 63 · água 18 / 27. Total de épocas treinadas:
 mediana 40–47, máximo 85. Nenhuma execução chegou perto do limite de 400 — o *early stopping* sempre atua.
 
+## 8. DeepLabV3+ (D1): mais contexto reduz a confusão rio–lago?
+
+Rio binário, efficientnet-b2, dice, sem DA, seeds 42/20/83 — pareado com Unet e FPN de mesmo encoder e seed.
+Hipótese: o ASPP (contexto da cena inteira) ajudaria a separar rio de lago (Dewi et al. 2025).
+
+| Teste (média ± desvio, 3 seeds) | DeepLabV3+ | Unet | FPN |
+|---|---:|---:|---:|
+| IoU do rio | **0.861 ± 0.002** | 0.848 ± 0.015 | 0.858 ± 0.010 |
+| F1 | 0.925 | 0.918 | 0.923 |
+| Precisão | 0.909 | 0.914 | 0.917 |
+| Recall | **0.941** | 0.921 | 0.930 |
+| Lago → rio | 40.3 ± 7.4% | 43.4 ± 3.0% | 33.4 ± 11.0% |
+| FP em lagos | 53.0% | 61.9% | 48.5% |
+| IoU (validação) | 0.773 | 0.779 | 0.807 |
+
+| DeepLabV3+ − Unet (seeds 42 / 20 / 83) | Diferenças | Média |
+|---|---|---:|
+| IoU | +0.027 / +0.015 / −0.004 | +0.013 |
+| Precisão | −0.002 / +0.002 / −0.014 | −0.005 |
+| Recall | +0.034 / +0.017 / +0.010 (3/3) | +0.020 |
+| Lago → rio | −0.1 / −12.7 / +3.2 pp | −3.2 pp |
+| FP em lagos | −3.5 / −17.3 / −5.9 pp (3/3) | −8.9 pp |
+
+DeepLabV3+ − FPN: IoU +0.003 em média (empate); lago → rio +6.9 pp.
+
+**Leitura:** o DeepLabV3+ supera o Unet pelo **recall** (3/3) e é o modelo mais estável entre seeds (IoU ± 0.002),
+mas **não reduz a confusão rio–lago**: precisão e lago → rio não melhoram de forma consistente. A parcela de FP em lagos
+cai porque surgem mais FP em outros lugares (provavelmente bordas, pela saída em resolução 1/16), não porque há menos
+FP em lagos. Empata com o FPN, que também agrega várias escalas. A hipótese do contexto (dentro do tile) **não se confirma**.
+
 ## Conclusões
 
 1. **Desempenho com 3 seeds:** rio IoU **0.841 ± 0.017** (F1 0.914 ± 0.010); 3 classes, rio IoU **0.835 ± 0.018**
@@ -176,11 +206,10 @@ mediana 40–47, máximo 85. Nenhuma execução chegou perto do limite de 400 �
    ~19 pp (6/6) e aumenta a precisão do rio; mas é pior que o resnet50 para segmentar toda a água.
 6. **Na validação, o erro do rio é o inverso** (recall 0,82 vs. 0,93 no teste), enquanto o modelo de água não cai.
 7. **Ruído de seed ≈ diferenças entre configurações** (~0,01 de IoU): comparações só com média de seeds e pareadas.
+8. **DeepLabV3+ (mais contexto) melhora o recall do rio, mas não reduz a confusão com lagos**; empata com o FPN.
 
 ## Pendências
 
-- **D1 (DeepLabV3+, rodando):** comparar com o Unet + efficientnet-b2 desta tabela (mesmos seeds) — lago → rio,
-  precisão e recall na validação.
 - **BCE + Dice / pesos por classe:** testar se a classe de lagos melhora e se isso reduz lago → rio no 3 classes.
 - **Análise por largura de rio** e replicação dos diagnósticos por trecho na validação (A5).
 - Formulação "água": o encoder resnet50 é melhor aqui — considerar ao comparar com o artigo original (A1).

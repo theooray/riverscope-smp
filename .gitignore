@@ -4,4 +4,8 @@ Datasets
 exp/
 logs/
 analysis
+img
+Authors_*
+artigo*
+compilar_artigo.sh
 docs/00-caderno-do-artigo.md
